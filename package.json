@@ -5,7 +5,7 @@
   "cordova": {
     "id": "de-dl9rdz-rdzwx",
     "platforms": [
-      "android", "browser"
+      "android"
     ]
   },
   "repository": {
