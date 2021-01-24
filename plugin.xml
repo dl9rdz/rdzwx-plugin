@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
+        id="de-dl9rdz-rdzwx" version="0.0.1">
+    <name>rdzwx</name>
+    <description>rdzwx cordova plugin</description>
+    <license>Apache 2.0</license>
+    <keywords>cordova,rdzwx</keywords>
+    <js-module src="www/rdzwx.js" name="rdzWx">
+        <clobbers target="rdzwx" />
+    </js-module>
+    <platform name="android">
+        <config-file target="config.xml" parent="/*">
+            <feature name="rdzwx">
+                <param name="android-package" value="de.dl9rdz.rdzwx"/>
+            </feature>
+        </config-file>
+        <source-file src="src/android/rdzwx.kt" target-dir="app/src/main/kotlin/de/dl9rdz"/>
+        <source-file src="src/android/rdzwx-a.kt" target-dir="app/src/main/kotlin/de/dl9rdz"/>
+    </platform>
+</plugin>
+
+
