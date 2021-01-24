@@ -13,6 +13,7 @@ import org.apache.cordova.CordovaArgs
 import org.apache.cordova.CallbackContext
 import org.apache.cordova.CordovaPlugin
 import org.apache.cordova.CordovaInterface
+import org.apache.cordova.PluginResult
 
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
@@ -34,6 +35,7 @@ class JsonRdzHandler {
     private var running: Boolean = false
     private var host: InetAddress? = null
     private var port: Int? = null
+    private var rdzwx: RdzWx? = null
 
     init {
         thread { this.run() }
@@ -69,6 +71,10 @@ class JsonRdzHandler {
     }
 
     private var output: OutputStream? = null
+
+    fun initialize(rdzwx: RdzWx) {
+        this.rdzwx = rdzwx
+    }
 
     fun postGpsPosition(latitude: Double, longitude: Double, altitude: Double, bearing: Float) {
         val b: ByteArray = ("{\"lat\": " + latitude + " , \"lon\": " + longitude + " , \"alt\": " + altitude + " , \"course\": " + bearing + " }\n").toByteArray(Charsets.ISO_8859_1)
@@ -142,7 +148,9 @@ class JsonRdzHandler {
     }
 
     fun processFrame(data: ByteArray) {
-        LOG.d(LOG_TAG, String(data))
+        val s = String(data)
+        LOG.d(LOG_TAG, s)
+        rdzwx?.handleJsonrdzData(s)
     }
 }
 
@@ -151,6 +159,7 @@ class RdzWx : CordovaPlugin() {
     val gpsHandler = GPSHandler()
     val mdnsHandler = MDNSHandler()
     val jsonrdzHandler = JsonRdzHandler()
+    var cb: CallbackContext? = null
 
     val runnable: Runnable = run {
         Runnable {
@@ -165,6 +174,13 @@ class RdzWx : CordovaPlugin() {
         jsonrdzHandler.connectTo(serviceInfo.host, serviceInfo.port)
     }
 
+    fun handleJsonrdzData(data: String) {
+        if (cb == null) return
+        val plugRes = PluginResult(PluginResult.Status.OK, data)
+        plugRes.setKeepCallback(true)
+        cb?.sendPluginResult(plugRes)
+    }
+
     fun updateGps(latitude: Double, longitude: Double, altitude: Double, bearing: Float) {
         jsonrdzHandler.postGpsPosition(latitude, longitude, altitude, bearing)
     }
@@ -174,6 +190,7 @@ class RdzWx : CordovaPlugin() {
 
         gpsHandler.initialize(this)
         mdnsHandler.initialize(this)
+        jsonrdzHandler.initialize(this)
         handler.postDelayed(runnable, 5000)
     }
 
@@ -190,11 +207,18 @@ class RdzWx : CordovaPlugin() {
 
     override fun execute(action: String, args: CordovaArgs, callbackContext: CallbackContext): Boolean {
         when (action) {
-            "test" -> {
-                callbackContext.success("YES")
+            "start" -> {
+                LOG.d(LOG_TAG, "execute: start")
+                cb = callbackContext
+                val plugRes = PluginResult(PluginResult.Status.OK, "{\"status\": \"OK\"}")
+                plugRes.setKeepCallback(true)
+                cb?.sendPluginResult(plugRes)
                 return true
             }
-            else -> return false
+            else -> {
+                LOG.d(LOG_TAG, "unknown action: " + action)
+                return false
+            }
         }
     }
 
