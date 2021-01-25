@@ -66,6 +66,7 @@ class JsonRdzHandler {
             } catch (ex: Exception) {
                 LOG.d(LOG_TAG, "Connection closed by exception " + ex.toString())
             }
+            rdzwx?.handleTtgoStatus(null)
             running = false
         }
     }
@@ -106,6 +107,7 @@ class JsonRdzHandler {
             return
         }
         LOG.d(LOG_TAG, "Connected!")
+        rdzwx?.handleTtgoStatus(host.getHostAddress())
 
         val input = socket.getInputStream()
         output = socket.getOutputStream()
@@ -177,6 +179,17 @@ class RdzWx : CordovaPlugin() {
     fun handleJsonrdzData(data: String) {
         if (cb == null) return
         val plugRes = PluginResult(PluginResult.Status.OK, data)
+        plugRes.setKeepCallback(true)
+        cb?.sendPluginResult(plugRes)
+    }
+
+    fun handleTtgoStatus(ip: String?) {
+        // ip==null: disconnected; else: connected
+        if (cb == null) return
+        val status: String
+        if (ip == null) status = " { \"msgtype\": \"ttgostatus\", \"state\": \"offline\", \"ip\": \"\" } "
+        else status = " { \"msgtype\": \"ttgostatus\", \"state\": \"online\", \"ip\": \"" + ip + "\" } "
+        val plugRes = PluginResult(PluginResult.Status.OK, status)
         plugRes.setKeepCallback(true)
         cb?.sendPluginResult(plugRes)
     }
