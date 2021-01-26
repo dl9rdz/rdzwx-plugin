@@ -196,6 +196,12 @@ class RdzWx : CordovaPlugin() {
 
     fun updateGps(latitude: Double, longitude: Double, altitude: Double, bearing: Float) {
         jsonrdzHandler.postGpsPosition(latitude, longitude, altitude, bearing)
+        if (cb == null) return
+        val status = "{ \"msgtype\": \"gps\", \"lat\": " + latitude + ", \"lon\": " + longitude +
+                ", \"alt\": " + altitude + ", \"dir\": " + bearing + "}"
+        val plugRes = PluginResult(PluginResult.Status.OK, status)
+        plugRes.setKeepCallback(true)
+        cb?.sendPluginResult(plugRes)
     }
 
     override fun pluginInitialize() {
