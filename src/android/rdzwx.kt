@@ -72,6 +72,7 @@ class JsonRdzHandler {
     }
 
     private var output: OutputStream? = null
+    private var sock: Socket? = null
 
     fun initialize(rdzwx: RdzWx) {
         this.rdzwx = rdzwx
@@ -97,7 +98,7 @@ class JsonRdzHandler {
 
     private fun runConnection(host: InetAddress, port: Int) {
         LOG.d(LOG_TAG, "Trying to connect!")
-        val socket: Socket?
+        var socket: Socket? = null
         try {
             socket = Socket(host, port)
         } catch (ex: Exception) {
@@ -106,6 +107,7 @@ class JsonRdzHandler {
             running = false
             return
         }
+        sock = socket
         LOG.d(LOG_TAG, "Connected!")
         rdzwx?.handleTtgoStatus(host.getHostAddress())
 
@@ -147,6 +149,13 @@ class JsonRdzHandler {
         }
         output = null
         socket.close()
+    }
+
+    fun closeConnection() {
+        try {
+            if (running) sock?.close()
+        } catch (e: Exception) {
+        }
     }
 
     fun processFrame(data: ByteArray) {
@@ -232,6 +241,11 @@ class RdzWx : CordovaPlugin() {
                 val plugRes = PluginResult(PluginResult.Status.OK, "{\"status\": \"OK\"}")
                 plugRes.setKeepCallback(true)
                 cb?.sendPluginResult(plugRes)
+                return true
+            }
+            "closeconn" -> {
+                jsonrdzHandler?.closeConnection()
+                callbackContext.success()
                 return true
             }
             else -> {
