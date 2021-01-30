@@ -7,6 +7,8 @@
 package de.dl9rdz
 
 import android.os.Handler
+import android.content.Intent
+import android.net.Uri
 
 import org.apache.cordova.LOG
 import org.apache.cordova.CordovaArgs
@@ -18,6 +20,7 @@ import org.apache.cordova.PluginResult
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.io.ByteArrayInputStream
 import java.io.OutputStream
@@ -33,12 +36,20 @@ val fakeData: ByteArray =
 
 class JsonRdzHandler {
     private var running: Boolean = false
+    private var tactive: Boolean = false
     private var host: InetAddress? = null
     private var port: Int? = null
     private var rdzwx: RdzWx? = null
 
-    init {
-        thread { this.run() }
+
+    fun initialize(rdzwx: RdzWx) {
+        this.rdzwx = rdzwx
+        thread { tactive = true; this.run() }
+    }
+
+    fun stop() {
+        tactive = false
+        closeConnection()
     }
 
     // public methods:
@@ -51,7 +62,7 @@ class JsonRdzHandler {
     // internal private methods
     fun run() {
         LOG.d(LOG_TAG, "JsonRdz thread is running")
-        while (true) {
+        while (tactive) {
             // if no host/port known: do nothing, retry in a second
             val host = this.host
             val port = this.port
@@ -69,17 +80,15 @@ class JsonRdzHandler {
             rdzwx?.handleTtgoStatus(null)
             running = false
         }
+        LOG.d(LOG_TAG, "JsonRdz thread is terminating")
     }
 
     private var output: OutputStream? = null
     private var sock: Socket? = null
 
-    fun initialize(rdzwx: RdzWx) {
-        this.rdzwx = rdzwx
-    }
-
-    fun postGpsPosition(latitude: Double, longitude: Double, altitude: Double, bearing: Float) {
-        val b: ByteArray = ("{\"lat\": " + latitude + " , \"lon\": " + longitude + " , \"alt\": " + altitude + " , \"course\": " + bearing + " }\n").toByteArray(Charsets.ISO_8859_1)
+    fun postGpsPosition(latitude: Double, longitude: Double, altitude: Double, bearing: Float, accuracy: Float) {
+        val b: ByteArray = ("{\"lat\": " + latitude + " , \"lon\": " + longitude + " , \"alt\": " + altitude +
+                " , \"course\": " + bearing + " , \"hdop\": " + accuracy + " }\n").toByteArray(Charsets.ISO_8859_1)
         try {
             output?.write(b)
         } catch (ex: Exception) {
@@ -98,9 +107,10 @@ class JsonRdzHandler {
 
     private fun runConnection(host: InetAddress, port: Int) {
         LOG.d(LOG_TAG, "Trying to connect!")
-        var socket: Socket? = null
+        val socket: Socket?
         try {
-            socket = Socket(host, port)
+            socket = Socket()
+            socket.connect(InetSocketAddress(host, port), 3000)
         } catch (ex: Exception) {
             Thread.sleep(1000)
             LOG.d(LOG_TAG, "connect failed: " + ex.toString())
@@ -166,6 +176,7 @@ class JsonRdzHandler {
 }
 
 class RdzWx : CordovaPlugin() {
+    var running: Boolean = false
     val handler = Handler()
     val gpsHandler = GPSHandler()
     val mdnsHandler = MDNSHandler()
@@ -176,7 +187,9 @@ class RdzWx : CordovaPlugin() {
         Runnable {
             LOG.d(LOG_TAG, "Runnable is running - test")
             jsonrdzHandler.postAlive()
-            handler.postDelayed(runnable, 5000)
+            if (running) {
+                handler.postDelayed(runnable, 5000)
+            }
         }
     }
 
@@ -203,11 +216,11 @@ class RdzWx : CordovaPlugin() {
         cb?.sendPluginResult(plugRes)
     }
 
-    fun updateGps(latitude: Double, longitude: Double, altitude: Double, bearing: Float) {
-        jsonrdzHandler.postGpsPosition(latitude, longitude, altitude, bearing)
+    fun updateGps(latitude: Double, longitude: Double, altitude: Double, bearing: Float, accuracy: Float) {
+        jsonrdzHandler.postGpsPosition(latitude, longitude, altitude, bearing, accuracy)
         if (cb == null) return
         val status = "{ \"msgtype\": \"gps\", \"lat\": " + latitude + ", \"lon\": " + longitude +
-                ", \"alt\": " + altitude + ", \"dir\": " + bearing + "}"
+                ", \"alt\": " + altitude + ", \"dir\": " + bearing + ", \"hdop\": " + accuracy + "}"
         val plugRes = PluginResult(PluginResult.Status.OK, status)
         plugRes.setKeepCallback(true)
         cb?.sendPluginResult(plugRes)
@@ -215,11 +228,21 @@ class RdzWx : CordovaPlugin() {
 
     override fun pluginInitialize() {
         super.initialize(cordova, webView)
+    }
 
+    fun pluginStart() {
+        running = true
         gpsHandler.initialize(this)
         mdnsHandler.initialize(this)
         jsonrdzHandler.initialize(this)
         handler.postDelayed(runnable, 5000)
+    }
+
+    fun pluginStop() {
+        running = false
+        jsonrdzHandler.stop()
+        gpsHandler.stop()
+        mdnsHandler.stop()
     }
 
     override fun onMessage(id: String?, data: Any?): Any? {
@@ -238,13 +261,26 @@ class RdzWx : CordovaPlugin() {
             "start" -> {
                 LOG.d(LOG_TAG, "execute: start")
                 cb = callbackContext
+                pluginStart()
                 val plugRes = PluginResult(PluginResult.Status.OK, "{\"status\": \"OK\"}")
                 plugRes.setKeepCallback(true)
                 cb?.sendPluginResult(plugRes)
                 return true
             }
+            "stop" -> {
+                LOG.d(LOG_TAG, "execute: stop")
+                pluginStop()
+                callbackContext.success()
+                return true
+            }
             "closeconn" -> {
-                jsonrdzHandler?.closeConnection()
+                jsonrdzHandler.closeConnection()
+                callbackContext.success()
+                return true
+            }
+            "showmap" -> {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(args.getString(0)))
+                this.cordova.getActivity().startActivity(intent)
                 callbackContext.success()
                 return true
             }

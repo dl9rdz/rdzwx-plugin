@@ -13,6 +13,11 @@
                 <param name="android-package" value="de.dl9rdz.RdzWx" />
             </feature>
         </config-file>
+        <config-file parent="/manifest" target="AndroidManifest.xml">
+            <uses-permission android:name="android.permission.INTERNET" />
+            <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+            <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+        </config-file>
         <source-file src="src/android/rdzwx.kt" target-dir="app/src/main/kotlin/de/dl9rdz" />
         <source-file src="src/android/rdzwx-a.kt" target-dir="app/src/main/kotlin/de/dl9rdz" />
     </platform>
