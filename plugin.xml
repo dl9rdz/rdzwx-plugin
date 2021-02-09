@@ -20,6 +20,11 @@
         </config-file>
         <source-file src="src/android/rdzwx.kt" target-dir="app/src/main/kotlin/de/dl9rdz" />
         <source-file src="src/android/rdzwx-a.kt" target-dir="app/src/main/kotlin/de/dl9rdz" />
+        <source-file src="src/android/IrdzwxPredict.aidl"
+            target-dir="app/src/main/aidl/de/dl9rdz/rdzwx_predict" />
+        <source-file src="src/android/Result.aidl"
+            target-dir="app/src/main/aidl/de/dl9rdz/rdzwx_predict" />
+
     </platform>
 </plugin>
 

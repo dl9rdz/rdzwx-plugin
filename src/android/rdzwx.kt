@@ -130,20 +130,6 @@ class JsonRdzHandler {
 
         LOG.d(LOG_TAG, "Reading from input stream")
 
-        /* OLD: TNC KISS
-        // read and parse data first kiss 2 raw, then parse call>APZRDZ:;id_id_id_*hhmmsszdddd.ddxyddddd.ddxy(ddd/ddd)?/A=d{6}(!w__!)blablabla
-        // kiss2raw: replace \xDB\xDC with \xC0 and \xDB\xDD with \xDB, undteil \XC0 (FEND) is found
-        loop@ while(true) {
-            val byte = input.read()
-            //LOG.d(LOG_TAG, "GOt a byte: "+byte.toString())
-            when(byte) {
-            -1 -> break@loop
-                0xC0 -> { processFrame(buf); buf = byteArrayOf() }
-            0xDB -> when(input.read()) { 0xDC -> buf += 0xC0.toByte(); 0xDD -> buf += 0xDB.toByte() ; else -> error("bb") }
-            else -> buf += byte.toByte()
-            }
-        }
-        */
         // new: jsonrdz
         jloop@ while (true) {
             val byte = input.read()
@@ -170,7 +156,7 @@ class JsonRdzHandler {
 
     fun processFrame(data: ByteArray) {
         val s = String(data)
-        LOG.d(LOG_TAG, s)
+        //LOG.d(LOG_TAG, s)
         rdzwx?.handleJsonrdzData(s)
     }
 }
@@ -181,11 +167,12 @@ class RdzWx : CordovaPlugin() {
     val gpsHandler = GPSHandler()
     val mdnsHandler = MDNSHandler()
     val jsonrdzHandler = JsonRdzHandler()
+    val predictHandler = PredictHandler()
     var cb: CallbackContext? = null
 
     val runnable: Runnable = run {
         Runnable {
-            LOG.d(LOG_TAG, "Runnable is running - test")
+            //LOG.d(LOG_TAG, "Runnable is running - test")
             jsonrdzHandler.postAlive()
             if (running) {
                 handler.postDelayed(runnable, 5000)
@@ -231,18 +218,33 @@ class RdzWx : CordovaPlugin() {
     }
 
     fun pluginStart() {
+        if (running) {
+            LOG.d(LOG_TAG, "pluginStart(): already running")
+            return
+        }
         running = true
         gpsHandler.initialize(this)
         mdnsHandler.initialize(this)
         jsonrdzHandler.initialize(this)
         handler.postDelayed(runnable, 5000)
+        predictHandler.initialize(this)
+        //predictHandler.performPrediction(10.0,10.9)
     }
 
     fun pluginStop() {
-        running = false
+        if (!running) {
+            LOG.d(LOG_TAG, "pluginStop(): already stopped")
+            return
+        }
         jsonrdzHandler.stop()
         gpsHandler.stop()
         mdnsHandler.stop()
+        predictHandler.stop()
+        running = false
+    }
+
+    override fun onStop() {
+        LOG.e(LOG_TAG, "onStop")
     }
 
     override fun onMessage(id: String?, data: Any?): Any? {
@@ -262,7 +264,7 @@ class RdzWx : CordovaPlugin() {
                 LOG.d(LOG_TAG, "execute: start")
                 cb = callbackContext
                 pluginStart()
-                val plugRes = PluginResult(PluginResult.Status.OK, "{\"status\": \"OK\"}")
+                val plugRes = PluginResult(PluginResult.Status.OK, "{ \"msgtype\": \"pluginstatus\", \"status\": \"OK\"}")
                 plugRes.setKeepCallback(true)
                 cb?.sendPluginResult(plugRes)
                 return true
