@@ -12,7 +12,11 @@ var RdzWx = {
     },
     showmap: function(str, callback) {
         exec(callback, function(err) { callback('error: '+err); }, "RdzWx", "showmap", [str]);
+     },
+    wgstoegm: function(lat, lon, callback) {
+        exec(callback, function(err) { callback('error: '+err); }, "RdzWx", "wgstoegm", [lat, lon]);
      }
+
 };
 
 module.exports = RdzWx;

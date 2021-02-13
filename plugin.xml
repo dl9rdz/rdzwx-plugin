@@ -24,6 +24,7 @@
             target-dir="app/src/main/aidl/de/dl9rdz/rdzwx_predict" />
         <source-file src="src/android/Result.aidl"
             target-dir="app/src/main/aidl/de/dl9rdz/rdzwx_predict" />
+        <source-file src="src/android/assets/WW15MGH.DAC" target-dir="app/src/main/assets" />
 
     </platform>
 </plugin>

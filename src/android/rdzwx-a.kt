@@ -36,11 +36,61 @@ import android.content.ComponentName
 import android.os.IBinder
 import de.dl9rdz.rdzwx_predict.*
 import android.app.Activity
+import android.content.res.AssetManager.AssetInputStream
+import android.content.res.AssetManager
+import java.io.InputStream
 
 /* Class with android specific code */
 
 //const val SERVICE_TYPE = "_kisstnc._tcp."  
 const val SERVICE_TYPE = "_jsonrdz._tcp."
+
+class WgsToEgm {
+    private var rdzwx: RdzWx? = null
+    private var ais: InputStream? = null
+    fun initialize(cordovaPlugin: RdzWx) {
+        rdzwx = cordovaPlugin
+        try {
+            val am = cordovaPlugin.cordova.getActivity().getApplicationContext().getAssets()
+            ais = am.open("WW15MGH.DAC", AssetManager.ACCESS_RANDOM)
+        } catch (e: Exception) {
+            Log.e("de.dl9rdz.rdzwx", e.toString())
+        }
+    }
+
+    fun stop() {
+        ais?.close()
+        ais = null
+    }
+
+    fun rdgeoid(lat: Int, lon: Int): Int {
+        val input = ais
+        if (input == null) return Int.MIN_VALUE
+        input.reset()
+        val pos = ((lat * 1440) + lon) * 2
+        input.skip(pos + 0L)
+        val b = ByteArray(2)
+        input.read(b)
+        var res = b[0] * 256 + b[1]
+        if (res > 32767) res -= 65536
+        //Log.d("rdzwx-plugin", "at lat "+lat+", lon "+lon+": (pos="+pos+"): diff is "+res)
+        return res
+    }
+
+    fun wgsToEgm(lat: Double, lon: Double): Float {
+        if (ais == null) return Float.NaN
+        var flat = (90.0 - lat) * 4
+        var flon = (if (lon < 0) lon + 360 else lon) * 4
+        val ilat: Int = flat.toInt()
+        val ilon: Int = flon.toInt()
+        flat -= ilat
+        flon -= ilon
+        val g: Float = (((rdgeoid(ilat, ilon) * (1.0 - flat) + rdgeoid(ilat + 1, ilon) * flat) * (1 - flon) +
+                (rdgeoid(ilat, ilon + 1) * (1.0 - flat) + rdgeoid(ilat + 1, ilon + 1) * flat) * flon) * 0.01).toFloat()
+        //Log.d("rdzwx-plugin", "return value is "+g.toString())
+        return g
+    }
+}
 
 class PredictHandler {
     var isBound: Boolean = false
@@ -226,23 +276,24 @@ class MDNSHandler {
         nsdManager?.stopServiceDiscovery(discoveryListener)
     }
 
-    // Instantiate a new DiscoveryListener
-    private val discoveryListener = object : NsdManager.DiscoveryListener {
-        var resolveListener = object : NsdManager.ResolveListener {
-            override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
-                Log.d(LOG_TAG, "Resolve failed: $errorCode")
-            }
+    class MyResolveListener(val rdzwx: RdzWx?) : NsdManager.ResolveListener {
+        override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
+            Log.d(LOG_TAG, "Resolve failed: $errorCode")
+        }
 
-            override fun onServiceResolved(serviceInfo: NsdServiceInfo?) {
-                Log.d(LOG_TAG, "Resolve suceeded with host ${serviceInfo?.getHost()} and port ${serviceInfo?.port}")
-                if (serviceInfo != null) {
-                    rdzwx?.runJsonRdz(serviceInfo)
-                } else Log.d(LOG_TAG, "service info is null")
-                if (rdzwx == null) {
-                    Log.d(LOG_TAG, "test is null")
-                }
+        override fun onServiceResolved(serviceInfo: NsdServiceInfo?) {
+            Log.d(LOG_TAG, "Resolve suceeded with host ${serviceInfo?.getHost()} and port ${serviceInfo?.port}")
+            if (serviceInfo != null) {
+                rdzwx?.runJsonRdz(serviceInfo)
+            } else Log.d(LOG_TAG, "service info is null")
+            if (rdzwx == null) {
+                Log.d(LOG_TAG, "test is null")
             }
         }
+    }
+
+    // Instantiate a new DiscoveryListener
+    private val discoveryListener = object : NsdManager.DiscoveryListener {
 
         // Called as soon as service discovery begins.
         override fun onDiscoveryStarted(regType: String) {
@@ -258,7 +309,7 @@ class MDNSHandler {
                     Log.d(LOG_TAG, "Unknown Service Type: ${service.serviceType}")
                 // else lookup host and port
                 else ->
-                    nsdManager?.resolveService(service, resolveListener)
+                    nsdManager?.resolveService(service, MyResolveListener(rdzwx))
             }
             Log.d(LOG_TAG, "serviceName: ${service.serviceName}  host: ${service.host}, port: ${service.port}")
         }

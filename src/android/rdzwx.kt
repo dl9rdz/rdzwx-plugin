@@ -28,6 +28,7 @@ import kotlin.text.Charsets
 
 import kotlin.concurrent.thread
 
+
 const val LOG_TAG = "dl9rdz-rdzwx"
 
 // Just for testing
@@ -168,6 +169,7 @@ class RdzWx : CordovaPlugin() {
     val mdnsHandler = MDNSHandler()
     val jsonrdzHandler = JsonRdzHandler()
     val predictHandler = PredictHandler()
+    val wgsToEgm = WgsToEgm()
     var cb: CallbackContext? = null
 
     val runnable: Runnable = run {
@@ -187,7 +189,22 @@ class RdzWx : CordovaPlugin() {
 
     fun handleJsonrdzData(data: String) {
         if (cb == null) return
-        val plugRes = PluginResult(PluginResult.Status.OK, data)
+        var d = data
+        // looks ugly, but didn't find a easy way to decently parse JSON in Kotlin??
+        LOG.d("rdzwx", "data: " + d)
+        val latfind = "\"lat\":\\s*([0-9.]+)\\s*,".toRegex().find(data)
+        val lat = latfind?.destructured?.component1()
+        val lonfind = "\"lon\":\\s*([0-9.]+)\\s*,".toRegex().find(data)
+        val lon = lonfind?.destructured?.component1()
+        //LOG.d("rdzwx", "found: lat = "+lat+", long = "+lon)
+        //LOG.d("rdzwx", "latfind: "+latfind?.value+", lonfind: "+lonfind?.value)
+        if (lat != null && lon != null) {
+            val w = wgsToEgm.wgsToEgm(lat.toDouble(), lon.toDouble())
+            if (!w.isNaN()) {
+                d = "{ \"egmdiff\":" + w + ", " + data.substring(1)
+            }
+        }
+        val plugRes = PluginResult(PluginResult.Status.OK, d)
         plugRes.setKeepCallback(true)
         cb?.sendPluginResult(plugRes)
     }
@@ -228,7 +245,16 @@ class RdzWx : CordovaPlugin() {
         jsonrdzHandler.initialize(this)
         handler.postDelayed(runnable, 5000)
         predictHandler.initialize(this)
+        wgsToEgm.initialize(this)
         //predictHandler.performPrediction(10.0,10.9)
+
+        // testing
+        val data = "{\"res\":1,\"type\":\"RS41\",\"active\":1,\"freq\":402.7,\"id\":\"\",\"ser\":\"\",\"validId\":0,\"launchsite\":\"HH-Sasel        \",\"lat\":12.6,\"lon\":13.5,\"alt\":0,\"vs\":0,\"hs\":0,\"dir\":0,\"sats\":0,\"validPos\":0,\"time\":0,\"sec\":0,\"frame\":0,\"validTime\":0,\"rssi\":246,\"afc\":0,\"launchKT\":0,\"burstKT\":0,\"countKT\":0,\"crefKT\":0}\""
+        val latfind = "\"lat\":([0-9.]+),".toRegex().find(data)
+        val lat = latfind?.destructured?.component1()
+        val lonfind = "\"lon\":([0-9.]+),".toRegex().find(data)
+        val lon = lonfind?.destructured?.component1()
+        LOG.d("rdzwx", "test: found: lat = " + lat + ", long = " + lon)
     }
 
     fun pluginStop() {
@@ -240,6 +266,7 @@ class RdzWx : CordovaPlugin() {
         gpsHandler.stop()
         mdnsHandler.stop()
         predictHandler.stop()
+        wgsToEgm.stop()
         running = false
     }
 
@@ -284,6 +311,13 @@ class RdzWx : CordovaPlugin() {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(args.getString(0)))
                 this.cordova.getActivity().startActivity(intent)
                 callbackContext.success()
+                return true
+            }
+            "wgstoegm" -> {
+                val lat = args.getDouble(0)
+                val lon = args.getDouble(1)
+                val res = wgsToEgm.wgsToEgm(lat, lon)
+                callbackContext.success((res * 100).toInt())
                 return true
             }
             else -> {
