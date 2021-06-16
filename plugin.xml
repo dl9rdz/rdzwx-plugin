@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0" id="de-dl9rdz-rdzwx" version="0.0.1">
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0" id="de-dl9rdz-rdzwx" version="0.0.6">
     <name>RdzWx</name>
     <description>rdzwx cordova plugin</description>
     <license>Apache 2.0</license>
@@ -7,6 +7,18 @@
     <js-module name="RdzWx" src="www/rdzwx.js">
         <clobbers target="RdzWx" />
     </js-module>
+    <platform name="electron">
+        <config-file target="config.xml" parent="/*">
+            <feature name="RdzWx">
+                <param name="electron-package" value="RdzWx"/>
+            </feature>
+        </config-file>
+        <source-file src="src/android/assets/WW15MGH.DAC" target-dir="app/src/main/assets" />
+
+        <js-module src="src/electron/RdzWxProxy.js" name="RdzWx.Proxy">
+            <runs />
+        </js-module>
+    </platform>
     <platform name="android">
         <config-file target="config.xml" parent="/*">
             <feature name="RdzWx">
@@ -25,7 +37,6 @@
         <source-file src="src/android/Result.aidl"
             target-dir="app/src/main/aidl/de/dl9rdz/rdzwx_predict" />
         <source-file src="src/android/assets/WW15MGH.DAC" target-dir="app/src/main/assets" />
-
     </platform>
 </plugin>
 
