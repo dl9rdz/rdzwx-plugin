@@ -29,9 +29,9 @@ function runService(success) {
 }
 
 exports.start = function(success, fail, args) {
-  console.error("Started");
+  console.log("Started");
   runService(success);
-  console.error("Running");
+  console.log("Running");
 }
 
 exports.stop = function(success, fail, args) {
