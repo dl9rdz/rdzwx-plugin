@@ -1,4 +1,6 @@
 var net = global.require('net');
+var nodecon = global.require('console');
+var con = new nodecon.Console(process.stdout, process.stderr);
 
 var rdzhost = "rdzsonde.local";
 var rdzport = 14570;
@@ -9,6 +11,7 @@ function runService(success) {
   client = new net.Socket();
   client.connect(rdzport, rdzhost, function() {
     console.log("Connected");
+    con.log("Connected...");
     success('{ "msgtype": "ttgostatus", "state": "online", "ip": "'+client.remoteAddress+'" }', { keepCallback: true } );
   });
   client.on('data', function(data) {
@@ -18,6 +21,7 @@ function runService(success) {
   client.on("close", function() {
     // keep on trying
     console.log("Connection closed");
+    con.log("Close called......");
     success('{ "msgtype": "ttgostatus", "state": "offline", "ip": "" }', { keepCallback: true } );
     client = null;
     runService(success);
