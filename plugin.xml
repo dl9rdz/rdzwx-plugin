@@ -29,6 +29,9 @@
             <uses-permission android:name="android.permission.INTERNET" />
             <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
             <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+	    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+	    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
         </config-file>
         <source-file src="src/android/rdzwx.kt" target-dir="app/src/main/kotlin/de/dl9rdz" />
         <source-file src="src/android/rdzwx-a.kt" target-dir="app/src/main/kotlin/de/dl9rdz" />
@@ -37,6 +40,12 @@
         <source-file src="src/android/Result.aidl"
             target-dir="app/src/main/aidl/de/dl9rdz/rdzwx_predict" />
         <source-file src="src/android/assets/WW15MGH.DAC" target-dir="app/src/main/assets" />
+	<lib-file src="src/android/libs/mapsforge-core-master-0.16.0.jar" />
+	<lib-file src="src/android/libs/mapsforge-map-master-0.16.0.jar" />
+	<lib-file src="src/android/libs/mapsforge-themes-master-0.16.0.jar" />
+	<lib-file src="src/android/libs/mapsforge-map-reader-master-0.16.0.jar" />
+	<lib-file src="src/android/libs/mapsforge-map-android-master-0.16.0.jar" />
+	<lib-file src="src/android/libs/androidsvg-1.4.jar" />
     </platform>
 </plugin>
 

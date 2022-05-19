@@ -9,12 +9,16 @@ package de.dl9rdz
 import android.os.Handler
 import android.content.Intent
 import android.net.Uri
+import android.content.Context
+import android.util.Base64
+import android.provider.DocumentsContract
 
 import org.apache.cordova.LOG
 import org.apache.cordova.CordovaArgs
 import org.apache.cordova.CallbackContext
 import org.apache.cordova.CordovaPlugin
 import org.apache.cordova.CordovaInterface
+import org.apache.cordova.CordovaWebView
 import org.apache.cordova.PluginResult
 
 import android.net.nsd.NsdManager
@@ -28,6 +32,37 @@ import kotlin.text.Charsets
 
 import kotlin.concurrent.thread
 
+import java.io.File
+import java.io.FileOutputStream
+import java.io.FileInputStream
+import org.json.JSONObject
+import java.io.BufferedInputStream
+import java.util.zip.ZipInputStream;
+
+
+
+import org.mapsforge.core.graphics.TileBitmap
+import org.mapsforge.core.model.LatLong
+import org.mapsforge.core.model.Tile
+import org.mapsforge.core.util.IOUtils
+import org.mapsforge.map.layer.cache.FileSystemTileCache
+import org.mapsforge.map.layer.queue.JobQueue
+import org.mapsforge.map.layer.renderer.DatabaseRenderer
+import org.mapsforge.map.layer.renderer.RendererJob
+import org.mapsforge.map.model.DisplayModel
+import org.mapsforge.map.model.MapViewPosition
+import org.mapsforge.map.reader.MapFile
+
+import org.mapsforge.map.android.graphics.AndroidGraphicFactory
+
+import org.mapsforge.map.rendertheme.rule.RenderThemeFuture
+import org.mapsforge.map.rendertheme.XmlRenderTheme
+import org.mapsforge.map.rendertheme.InternalRenderTheme
+//import org.mapsforge.map.android.rendertheme.AssetsRenderTheme
+//import org.mapsforge.map.rendertheme.ExternalRenderTheme
+//import org.mapsforge.map.rendertheme.XmlRenderTheme
+import org.mapsforge.map.rendertheme.ZipRenderTheme
+import org.mapsforge.map.rendertheme.ZipXmlThemeResourceProvider
 
 const val LOG_TAG = "dl9rdz-rdzwx"
 
@@ -62,13 +97,14 @@ class JsonRdzHandler {
 
     // internal private methods
     fun run() {
+	var i: Int = 0
         LOG.d(LOG_TAG, "JsonRdz thread is running")
         while (tactive) {
             // if no host/port known: do nothing, retry in a second
             val host = this.host
             val port = this.port
             if (host == null || port == null) {
-                LOG.d(LOG_TAG, "no host/port")
+                if( (i++)%10 == 0 ) { LOG.d(LOG_TAG, "no host/port") }
                 Thread.sleep(1000)
                 continue
             }
@@ -162,6 +198,86 @@ class JsonRdzHandler {
     }
 }
 
+class OfflineTileCache: Thread {
+    val mapPath: File
+    val mapFile: MapFile
+    val mapCachedFile: File
+    val tileCache: FileSystemTileCache
+    val displayModel: DisplayModel
+    val mapViewPosition: MapViewPosition
+
+    val androidGraphicFactory: AndroidGraphicFactory
+    var xmlRenderTheme: XmlRenderTheme = InternalRenderTheme.DEFAULT
+    val databaseRenderer: DatabaseRenderer
+    val jobQueue: JobQueue<RendererJob>
+    val rdzwx: RdzWx
+
+    var rtf: RenderThemeFuture
+
+    constructor(context: Context, rdzwx: RdzWx) {
+	this.rdzwx = rdzwx
+	LOG.d(LOG_TAG, "Initializing offline tile cache")
+	mapPath = context.getExternalFilesDir(null) ?: throw Exception("External files dir not defined")
+	LOG.d(LOG_TAG, "mapPath is " + mapPath.toString() )
+
+	AndroidGraphicFactory.createInstance(context)
+	AndroidGraphicFactory.clearResourceFileCache();
+	androidGraphicFactory = AndroidGraphicFactory.INSTANCE
+
+	val mFile = File(mapPath, "austria.map")
+	//val mFile = File(mapPath, "bayern.map")
+	LOG.d(LOG_TAG, "map file name is "+mFile.toString())
+	//mapFile = MapFile(mFile)
+	mapFile = MapFile(File("/sdcard/Documents/maps/austria.map"))
+	mapCachedFile = File(mapPath, "mapcache.ser")
+	tileCache = FileSystemTileCache(1000, mapCachedFile, androidGraphicFactory)
+
+	DisplayModel.setDeviceScaleFactor(1f)
+	DisplayModel.setDefaultUserScaleFactor(1f)
+	displayModel = DisplayModel()
+	displayModel.setFixedTileSize(256)
+	mapViewPosition = MapViewPosition(displayModel)
+
+        jobQueue = JobQueue<RendererJob>(mapViewPosition, displayModel)
+	databaseRenderer = DatabaseRenderer(mapFile, androidGraphicFactory, tileCache, null, true, false, null)
+
+        setRenderTheme(File("/sdcard/Android/data/de.dl9rdz/files/_themes/freizeitkarte-v5.zip"))
+	rtf = RenderThemeFuture( androidGraphicFactory, xmlRenderTheme, displayModel )
+	val t = Thread(rtf)
+	t.start()
+	LOG.d(LOG_TAG, "Initializing offline tile cache finished")
+    }
+
+
+    fun setRenderTheme(uri: File) {
+        val zipin = ZipInputStream(BufferedInputStream(FileInputStream(uri)))
+	xmlRenderTheme = ZipRenderTheme("freizeitkarte-v5/freizeitkarte-v5.xml", ZipXmlThemeResourceProvider(zipin))
+    }
+
+    fun get(x: Int, y: Int, z: Int): String {
+      try {
+	LOG.d(LOG_TAG, "Getting tile at " + x + " / " + y + " / " + z)
+	val tile = Tile(x, y, z.toByte(), 256)
+        LOG.d(LOG_TAG, "Executing renderer")
+	val rendererJob = RendererJob(tile, mapFile, rtf, displayModel, 1f, false, false)
+	val bitmap = databaseRenderer.executeJob(rendererJob)
+        LOG.d(LOG_TAG, "Executing renderer done")
+	File(mapPath, "MapCache/" + z + "/" + x + "/").mkdirs()
+	val cachedTile = File(mapPath, "MapCache/" + z + "/" + x + "/" + y + ".png")
+	val outStream = FileOutputStream(cachedTile)
+	bitmap.compress(outStream)
+	var filePath = cachedTile.getAbsolutePath()
+	IOUtils.closeQuietly(outStream)
+	LOG.d(LOG_TAG, "Getting tile done, result is in " + filePath)
+	return "file://" + filePath.toString();
+      } catch(e: Exception) {
+        LOG.d(LOG_TAG, "Getting tile: Exception")
+        return ""
+      }
+    }
+}
+
+
 class RdzWx : CordovaPlugin() {
     var running: Boolean = false
     val handler = Handler()
@@ -171,6 +287,13 @@ class RdzWx : CordovaPlugin() {
     val predictHandler = PredictHandler()
     val wgsToEgm = WgsToEgm()
     var cb: CallbackContext? = null
+    var offlineTileCache: OfflineTileCache? = null
+
+    override fun initialize(cordova: CordovaInterface, webview: CordovaWebView) {
+	super.initialize(cordova, webview)
+        val context = this.cordova.getActivity().getApplicationContext()
+        //offlineTileCache = OfflineTileCache(context, this)
+    }
 
     val runnable: Runnable = run {
         Runnable {
@@ -320,6 +443,32 @@ class RdzWx : CordovaPlugin() {
                 callbackContext.success((res * 100).toInt())
                 return true
             }
+	    "gettile" -> {
+		val x = args.getInt(0)
+		val y = args.getInt(1)
+		val z = args.getInt(2)
+		LOG.d(LOG_TAG, "Scheduling offline tile generation on cordova thread pool")
+		cordova.getThreadPool().execute( object : Runnable {
+		    override fun run() {
+			LOG.d(LOG_TAG, "Running runnable for tile generation at "+z+"/"+x+"/"+y)
+			val bitmap = offlineTileCache!!.get(x, y, z)
+			LOG.d(LOG_TAG, "Getting offline tile done, bitmap is " + bitmap)
+			val result = JSONObject()
+			if ( bitmap != null ) {
+			    result.put("tile", bitmap)
+			} else {
+		            result.put("error", "error")
+			}
+		        callbackContext.success( result )
+		    }
+		})
+		return true
+	    }
+	    "selstorage" -> {
+		LOG.d(LOG_TAG, "calling selstorage")
+		selstorage(callbackContext)
+		return true
+	    }
             else -> {
                 LOG.d(LOG_TAG, "unknown action: " + action)
                 return false
@@ -327,4 +476,28 @@ class RdzWx : CordovaPlugin() {
         }
     }
 
+    var cbc: CallbackContext? = null
+    fun selstorage(callbackContext: CallbackContext) {
+	cbc = callbackContext
+	var pickerInitialUri = "file:///sdcard/Android/data/de.dl9rdz/files/"
+
+	// Compatible with Android 11? Ask user for folder and get permissions
+
+	LOG.d(LOG_TAG, "Setting up intent for document tree selection")
+	val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            // Optionally, specify a URI for the directory that should be opened in
+            // the system file picker when it loads.
+            putExtra(DocumentsContract.EXTRA_INITIAL_URI, pickerInitialUri)
+        }
+        cordova.startActivityForResult(this, intent, 12345);
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
+	LOG.d(LOG_TAG, "onActivityResult " + requestCode + " / " + resultCode)
+	if(requestCode == 12345) {
+	    val dir = data?.data
+	    LOG.d(LOG_TAG, "selected dir is "+dir)
+	    cbc!!.success(dir.toString())
+	}
+    }
 }

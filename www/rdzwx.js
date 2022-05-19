@@ -15,6 +15,14 @@ var RdzWx = {
      },
     wgstoegm: function(lat, lon, callback) {
         exec(callback, function(err) { callback('error: '+err); }, "RdzWx", "wgstoegm", [lat, lon]);
+     },
+    gettile: function(x, y, z, callback, err) {
+	console.log("gettile called, executing gettile");
+	exec(callback, err, "RdzWx", "gettile", [x, y, z]);
+	console.log("gettile called, executing gettile done");
+     },
+    selstorage: function(str, callback) {
+	exec(callback, function(err) { callback('error: '+err); }, "RdzWx", "selstorage", [str]);
      }
 
 };
