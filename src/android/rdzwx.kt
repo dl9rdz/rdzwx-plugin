@@ -12,6 +12,7 @@ import android.net.Uri
 import android.content.Context
 import android.util.Base64
 import android.provider.DocumentsContract
+import android.app.Activity
 
 import org.apache.cordova.LOG
 import org.apache.cordova.CordovaArgs
@@ -198,8 +199,10 @@ class JsonRdzHandler {
     }
 }
 
+// Always created
+// If mapFile is undefined, return "default" tiles
 class OfflineTileCache: Thread {
-    val mapPath: File
+    val cachePath: File
     val mapFile: MapFile
     val mapCachedFile: File
     val tileCache: FileSystemTileCache
@@ -214,23 +217,20 @@ class OfflineTileCache: Thread {
 
     var rtf: RenderThemeFuture
 
-    constructor(context: Context, rdzwx: RdzWx) {
+    constructor(activity: Activity, rdzwx: RdzWx, mapFileUri: Uri?, mapThemeUri: Uri?) {
+	val context: Context = activity.getApplicationContext()
 	this.rdzwx = rdzwx
 	LOG.d(LOG_TAG, "Initializing offline tile cache")
-	mapPath = context.getExternalFilesDir(null) ?: throw Exception("External files dir not defined")
-	LOG.d(LOG_TAG, "mapPath is " + mapPath.toString() )
+	cachePath = context.getExternalFilesDir(null) ?: throw Exception("External files dir not defined")
+	LOG.d(LOG_TAG, "cachePath is " + cachePath.toString() )
 
 	AndroidGraphicFactory.createInstance(context)
 	AndroidGraphicFactory.clearResourceFileCache();
 	androidGraphicFactory = AndroidGraphicFactory.INSTANCE
 
-	val mFile = File(mapPath, "austria.map")
-	//val mFile = File(mapPath, "bayern.map")
-	LOG.d(LOG_TAG, "map file name is "+mFile.toString())
+	//val mFile = File(mapPath, "austria.map")
+	//LOG.d(LOG_TAG, "map file name is "+mFile.toString())
 	//mapFile = MapFile(mFile)
-	mapFile = MapFile(File("/sdcard/Documents/maps/austria.map"))
-	mapCachedFile = File(mapPath, "mapcache.ser")
-	tileCache = FileSystemTileCache(1000, mapCachedFile, androidGraphicFactory)
 
 	DisplayModel.setDeviceScaleFactor(1f)
 	DisplayModel.setDefaultUserScaleFactor(1f)
@@ -239,20 +239,43 @@ class OfflineTileCache: Thread {
 	mapViewPosition = MapViewPosition(displayModel)
 
         jobQueue = JobQueue<RendererJob>(mapViewPosition, displayModel)
+
+	// Open content input stream for map
+	if(mapFileUri == null) {
+	    mapFile = MapFile.TEST_MAP_FILE
+	} else {
+            val fis : FileInputStream = activity.getContentResolver().openInputStream(mapFileUri) as FileInputStream
+	    mapFile = MapFile(fis)
+	}
+	mapCachedFile = File(cachePath, "mapcache.ser")
+	tileCache = FileSystemTileCache(1000, mapCachedFile, androidGraphicFactory)
+
 	databaseRenderer = DatabaseRenderer(mapFile, androidGraphicFactory, tileCache, null, true, false, null)
 
-        setRenderTheme(File("/sdcard/Android/data/de.dl9rdz/files/_themes/freizeitkarte-v5.zip"))
+	// Open content input stream for theme
+	if(mapThemeUri != null) {
+	    try {
+	    val zipin = ZipInputStream( BufferedInputStream( activity.getContentResolver().openInputStream(mapThemeUri) ) )
+	    val xmlthemes = ZipXmlThemeResourceProvider.scanXmlThemes( zipin )
+	    val zipinn = ZipInputStream( BufferedInputStream( activity.getContentResolver().openInputStream(mapThemeUri) ) )
+	    xmlRenderTheme = ZipRenderTheme(xmlthemes.get(0), ZipXmlThemeResourceProvider( zipinn) )
+	    LOG.d(LOG_TAG, "Setting render theme to "+mapThemeUri)
+	    //builder = AlertDialog.Builder(this)
+	    } catch(e: Exception) {
+		LOG.d(LOG_TAG, "Not setting theme due to exception "+e)
+	    }
+        }
+
 	rtf = RenderThemeFuture( androidGraphicFactory, xmlRenderTheme, displayModel )
 	val t = Thread(rtf)
 	t.start()
 	LOG.d(LOG_TAG, "Initializing offline tile cache finished")
     }
 
-
-    fun setRenderTheme(uri: File) {
-        val zipin = ZipInputStream(BufferedInputStream(FileInputStream(uri)))
-	xmlRenderTheme = ZipRenderTheme("freizeitkarte-v5/freizeitkarte-v5.xml", ZipXmlThemeResourceProvider(zipin))
-    }
+    //fun setRenderTheme(uri: Uri) {
+    //    val zipin = ZipInputStream(BufferedInputStream(FileInputStream(uri)))
+    //	xmlRenderTheme = ZipRenderTheme("freizeitkarte-v5/freizeitkarte-v5.xml", ZipXmlThemeResourceProvider(zipin))
+    //}
 
     fun get(x: Int, y: Int, z: Int): String {
       try {
@@ -262,8 +285,8 @@ class OfflineTileCache: Thread {
 	val rendererJob = RendererJob(tile, mapFile, rtf, displayModel, 1f, false, false)
 	val bitmap = databaseRenderer.executeJob(rendererJob)
         LOG.d(LOG_TAG, "Executing renderer done")
-	File(mapPath, "MapCache/" + z + "/" + x + "/").mkdirs()
-	val cachedTile = File(mapPath, "MapCache/" + z + "/" + x + "/" + y + ".png")
+	File(cachePath, "MapCache/" + z + "/" + x + "/").mkdirs()
+	val cachedTile = File(cachePath, "MapCache/" + z + "/" + x + "/" + y + ".png")
 	val outStream = FileOutputStream(cachedTile)
 	bitmap.compress(outStream)
 	var filePath = cachedTile.getAbsolutePath()
@@ -288,11 +311,24 @@ class RdzWx : CordovaPlugin() {
     val wgsToEgm = WgsToEgm()
     var cb: CallbackContext? = null
     var offlineTileCache: OfflineTileCache? = null
+    var offlineMap: Uri? = null
+    var offlineTheme: Uri? = null
 
     override fun initialize(cordova: CordovaInterface, webview: CordovaWebView) {
 	super.initialize(cordova, webview)
-        val context = this.cordova.getActivity().getApplicationContext()
-        //offlineTileCache = OfflineTileCache(context, this)
+        //val context = this.cordova.getActivity().getApplicationContext()
+
+	val sharedPref = this.cordova.getActivity().getPreferences(Context.MODE_PRIVATE) ?: return
+	var offlineMapFile = sharedPref.getString("offlineMap", "")
+	var offlineMapTheme = sharedPref.getString("offlineTheme", "")
+	offlineMap = Uri.parse(offlineMapFile)
+	offlineTheme = Uri.parse(offlineMapTheme)
+	try {
+            offlineTileCache = OfflineTileCache(this.cordova.getActivity(), this, offlineMap, offlineTheme!!)
+	} catch(e: Exception) {
+	    LOG.e(LOG_TAG, "Cannot create OfflineTileCache: "+e)
+	}
+	LOG.d(LOG_TAG, "Offline map: "+offlineMapFile+", offline theme: "+offlineMapTheme)
     }
 
     val runnable: Runnable = run {
@@ -451,13 +487,18 @@ class RdzWx : CordovaPlugin() {
 		cordova.getThreadPool().execute( object : Runnable {
 		    override fun run() {
 			LOG.d(LOG_TAG, "Running runnable for tile generation at "+z+"/"+x+"/"+y)
-			val bitmap = offlineTileCache!!.get(x, y, z)
-			LOG.d(LOG_TAG, "Getting offline tile done, bitmap is " + bitmap)
 			val result = JSONObject()
-			if ( bitmap != null ) {
-			    result.put("tile", bitmap)
+			if ( offlineTileCache == null) {
+			    result.put("error", "error")
 			} else {
-		            result.put("error", "error")
+			    val bitmap = offlineTileCache!!.get(x, y, z)
+			    LOG.d(LOG_TAG, "Getting offline tile done, bitmap is " + bitmap)
+			    // It is always not null... TODO remove stuff here
+			    if ( bitmap != null ) {
+			        result.put("tile", bitmap)
+			    } else {
+		                result.put("error", "error")
+			    }
 			}
 		        callbackContext.success( result )
 		    }
@@ -466,7 +507,10 @@ class RdzWx : CordovaPlugin() {
 	    }
 	    "selstorage" -> {
 		LOG.d(LOG_TAG, "calling selstorage")
-		selstorage(callbackContext)
+		val type = args.getString(0)
+	 	var itype = 0
+		if( type == "theme" ) { itype = 1 }	
+		selstorage(itype, callbackContext)
 		return true
 	    }
             else -> {
@@ -477,27 +521,64 @@ class RdzWx : CordovaPlugin() {
     }
 
     var cbc: CallbackContext? = null
-    fun selstorage(callbackContext: CallbackContext) {
+    // select a file (map or theme) (whichfile: 0=map, 1=theme)
+    fun selstorage(whichfile: Int, callbackContext: CallbackContext) {
 	cbc = callbackContext
-	var pickerInitialUri = "file:///sdcard/Android/data/de.dl9rdz/files/"
 
-	// Compatible with Android 11? Ask user for folder and get permissions
+	// current approach: select the file for map and theme, not a folder
+	// This is old code to select a folder
+	//var pickerInitialUri = "file:///sdcard/Android/data/de.dl9rdz/files/"
+	//LOG.d(LOG_TAG, "Setting up intent for document tree selection")
+	//val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+        //    // Optionally, specify a URI for the directory that should be opened in
+        //    // the system file picker when it loads.
+        //    putExtra(DocumentsContract.EXTRA_INITIAL_URI, pickerInitialUri)
+        // }
 
-	LOG.d(LOG_TAG, "Setting up intent for document tree selection")
-	val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            // Optionally, specify a URI for the directory that should be opened in
-            // the system file picker when it loads.
-            putExtra(DocumentsContract.EXTRA_INITIAL_URI, pickerInitialUri)
-        }
-        cordova.startActivityForResult(this, intent, 12345);
+	LOG.d(LOG_TAG, "Setting up intent for map file selection")
+	//val intent = Intent(Intent.ACTION_GET_CONTENT)
+	val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+	intent.addCategory(Intent.CATEGORY_OPENABLE)
+	intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+	intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+	// to allow mulitple files to be selected:
+	// intenet.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+	intent.setType("*/*")
+        cordova.startActivityForResult(this, intent, 12345+whichfile)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
 	LOG.d(LOG_TAG, "onActivityResult " + requestCode + " / " + resultCode)
 	if(requestCode == 12345) {
 	    val dir = data?.data
-	    LOG.d(LOG_TAG, "selected dir is "+dir)
-	    cbc!!.success(dir.toString())
+	    LOG.d(LOG_TAG, "selected map is "+dir)
+            val activity = this.cordova.getActivity()
+	    offlineMap = dir
+	    if(dir != null) {
+	        activity.getContentResolver().takePersistableUriPermission(dir, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                offlineTileCache = OfflineTileCache(activity, this, offlineMap, offlineTheme)
+	        cbc!!.success(dir.toString())
+	        // Save choice
+	        val sharedPref = this.cordova.getActivity().getPreferences(Context.MODE_PRIVATE) ?: return
+	        with(sharedPref.edit()) {
+		    putString("offlineMap", dir.toString())
+		    apply()
+	        }
+	    }
+	} else if (requestCode == 12346) {
+	    val themefile = data?.data
+	    LOG.d(LOG_TAG, "selected theme file is "+themefile)
+            val activity = this.cordova.getActivity() // .getApplicationContext()
+	    offlineTheme = themefile!!
+	    activity.getContentResolver().takePersistableUriPermission(offlineTheme!!, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            offlineTileCache = OfflineTileCache(activity, this, offlineMap, offlineTheme!!)
+	    cbc!!.success(themefile.toString())
+	    // Save choice
+	    val sharedPref = this.cordova.getActivity().getPreferences(Context.MODE_PRIVATE) ?: return
+	    with(sharedPref.edit()) {
+		putString("offlineTheme", offlineTheme.toString())
+		apply()
+	    }
 	}
     }
 }
