@@ -23,6 +23,9 @@ var RdzWx = {
      },
     selstorage: function(str, callback) {
 	exec(callback, function(err) { callback('error: '+err); }, "RdzWx", "selstorage", [str]);
+     },
+    mdnsUpdateDiscovery: function( mode, addr, callback) {
+        exec(callback, function(err) { callback('error: '+err); }, "RdzWx", "mdnsUpdateDiscovery", [mode, addr]);
      }
 
 };

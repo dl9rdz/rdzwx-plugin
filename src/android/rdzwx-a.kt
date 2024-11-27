@@ -292,12 +292,40 @@ class MDNSHandler {
 
     fun initialize(cordovaPlugin: RdzWx) {
         nsdManager = cordovaPlugin.cordova.getActivity().getSystemService(Context.NSD_SERVICE) as NsdManager?
-        nsdManager?.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
         rdzwx = cordovaPlugin
     }
 
+    fun updateDiscovery(mode: String, addr: String?) {
+        if(mode == "auto") {
+            start();
+        } else {
+	    stop(); 
+            if(!addr.isNullOrEmpty()) {
+                try {
+                    val (host, port) = addr.split(":").let {
+                        val resolvedHost = it[0]
+                        val resolvedPort = if (it.size > 1) it[1].toIntOrNull() ?: 14570 else 14570
+                        resolvedHost to resolvedPort
+                    }
+                    val inetAddr = InetAddress.getByName(host)
+                    rdzwx?.runJsonRdz(inetAddr, port)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    println("Invalid address: $addr")
+                }
+            }
+        }
+    }
+
+    fun start() {
+        nsdManager?.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
+    }
+
     fun stop() {
-        nsdManager?.stopServiceDiscovery(discoveryListener)
+        try {
+            nsdManager?.stopServiceDiscovery(discoveryListener)
+        } catch(e: Exception) {
+        }
     }
 
     class MyResolveListener(val rdzwx: RdzWx?) : NsdManager.ResolveListener {
@@ -308,7 +336,7 @@ class MDNSHandler {
         override fun onServiceResolved(serviceInfo: NsdServiceInfo?) {
             Log.d(LOG_TAG, "Resolve suceeded with host ${serviceInfo?.getHost()} and port ${serviceInfo?.port}")
             if (serviceInfo != null) {
-                rdzwx?.runJsonRdz(serviceInfo)
+                rdzwx?.runJsonRdz(serviceInfo.host, serviceInfo.port)
             } else Log.d(LOG_TAG, "service info is null")
             if (rdzwx == null) {
                 Log.d(LOG_TAG, "test is null")

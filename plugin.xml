@@ -14,10 +14,12 @@
             </feature>
         </config-file>
         <source-file src="src/android/assets/WW15MGH.DAC" target-dir="app/src/main/assets" />
-
+	<framework src="src/electron"/>
+<!--
         <js-module src="src/electron/RdzWxProxy.js" name="RdzWx.Proxy">
             <runs />
         </js-module>
+-->
     </platform>
     <platform name="android">
         <config-file target="config.xml" parent="/*">

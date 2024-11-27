@@ -249,6 +249,7 @@ class OfflineTileCache: Thread {
 	}
 	mapCachedFile = File(cachePath, "mapcache.ser")
 	tileCache = FileSystemTileCache(1000, mapCachedFile, androidGraphicFactory)
+	tileCache.purge()
 
 	databaseRenderer = DatabaseRenderer(mapFile, androidGraphicFactory, tileCache, null, true, false, null)
 
@@ -341,9 +342,11 @@ class RdzWx : CordovaPlugin() {
         }
     }
 
-    fun runJsonRdz(serviceInfo: NsdServiceInfo) {
+    fun runJsonRdz(host: InetAddress, port: Int) {
+// host, serviceInfo: NsdServiceInfo) {
         LOG.d(LOG_TAG, "setting target host for jsonrdz handler")
-        jsonrdzHandler.connectTo(serviceInfo.host, serviceInfo.port)
+        //jsonrdzHandler.connectTo(serviceInfo.host, serviceInfo.port)
+        jsonrdzHandler.connectTo(host, port)
     }
 
     fun handleJsonrdzData(data: String) {
@@ -391,6 +394,10 @@ class RdzWx : CordovaPlugin() {
 
     override fun pluginInitialize() {
         super.initialize(cordova, webView)
+    }
+
+    fun mdnsUpdateDiscovery(mode: String, addr: String?) {
+        mdnsHandler.updateDiscovery(mode, addr)
     }
 
     fun pluginStart() {
@@ -469,6 +476,13 @@ class RdzWx : CordovaPlugin() {
             "showmap" -> {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(args.getString(0)))
                 this.cordova.getActivity().startActivity(intent)
+                callbackContext.success()
+                return true
+            }
+	    "mdnsUpdateDiscovery" -> {
+                val mode = args.getString(0)
+                val addr = args.getString(1)
+                mdnsHandler.updateDiscovery(mode, addr)
                 callbackContext.success()
                 return true
             }
