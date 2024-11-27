@@ -173,10 +173,10 @@ class JsonRdzHandler {
             val byte = input.read()
             when (byte) {
                 -1 -> break@jloop
-                '}'.toInt() -> {
+                '}'.code -> {
                     buf += byte.toByte(); processFrame(buf); buf = byteArrayOf()
                 }
-                '\n'.toInt() -> {
+                '\n'.code -> {
                 }
                 else -> buf += byte.toByte()
             }
@@ -508,11 +508,11 @@ class RdzWx : CordovaPlugin() {
 			    val bitmap = offlineTileCache!!.get(x, y, z)
 			    LOG.d(LOG_TAG, "Getting offline tile done, bitmap is " + bitmap)
 			    // It is always not null... TODO remove stuff here
-			    if ( bitmap != null ) {
-			        result.put("tile", bitmap)
-			    } else {
-		                result.put("error", "error")
-			    }
+			    //if ( bitmap != null ) {
+			    result.put("tile", bitmap)
+			    //} else {
+		            //    result.put("error", "error")
+			    //}
 			}
 		        callbackContext.success( result )
 		    }
@@ -564,7 +564,7 @@ class RdzWx : CordovaPlugin() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
 	LOG.d(LOG_TAG, "onActivityResult " + requestCode + " / " + resultCode)
 	if(requestCode == 12345) {
-	    val dir = data?.data
+	    val dir = data.data
 	    LOG.d(LOG_TAG, "selected map is "+dir)
             val activity = this.cordova.getActivity()
 	    offlineMap = dir
@@ -580,7 +580,7 @@ class RdzWx : CordovaPlugin() {
 	        }
 	    }
 	} else if (requestCode == 12346) {
-	    val themefile = data?.data
+	    val themefile = data.data
 	    LOG.d(LOG_TAG, "selected theme file is "+themefile)
             val activity = this.cordova.getActivity() // .getApplicationContext()
 	    offlineTheme = themefile!!

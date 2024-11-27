@@ -199,7 +199,7 @@ class GPSHandler {
             rdzwx?.updateGps(location.latitude, location.longitude, location.altitude, location.bearing, location.getAccuracy())
         }
 
-        override fun onStatusChanged(provider: String, status: Int, extras: Bundle) {}
+        //override fun onStatusChanged(provider: String, status: Int, extras: Bundle) {} @Deprecated
         override fun onProviderEnabled(provider: String) {}
         override fun onProviderDisabled(provider: String) {}
     }
